@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# SSHFS artifacts
+*.swp
+*.swo
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# JSON DB
+*.json

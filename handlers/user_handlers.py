@@ -1,16 +1,35 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-from services.db import load_data, save_data
-from config import APPROVED_USERS_FILE, PENDING_REQUESTS_FILE
-from services.permissions import is_approved_user
+import logging
 import subprocess
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (ContextTypes, filters, ConversationHandler,
+                          CommandHandler, MessageHandler, CallbackQueryHandler)
+from config import APPROVED_USERS_FILE, PENDING_REQUESTS_FILE, SCRIPT_PATH
+from services.db import load_data, save_data
+from services.permissions import is_approved_user
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Define conversation states
+WAITING_FOR_LINK = 1
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger()
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Обрабатывает команду /start.
+
+    :param update: Объект обновления
+    :param context: Контекст
+    :return: Состояние ConversationHandler
+    """
     user_id = update.effective_chat.id
     pending_requests = load_data(PENDING_REQUESTS_FILE)
 
     if is_approved_user(user_id, APPROVED_USERS_FILE):
-        # await update.message.reply_text("Добро пожаловать! Используйте /help для списка команд.")
         await user_menu(update, context)
     elif user_id in pending_requests:
         await update.message.reply_text("Ваша заявка уже на рассмотрении у администратора.")
@@ -18,90 +37,182 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_requests.append(user_id)
         save_data(PENDING_REQUESTS_FILE, pending_requests)
         await update.message.reply_text("Заявка на доступ отправлена администратору.")
+    return ConversationHandler.END
 
-async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from config import SCRIPT_PATH  # чтобы не тянуть всё из config сверху
+
+async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Обрабатывает команду /download.
+
+    :param update: Объект обновления
+    :param context: Контекст
+    :return: Состояние ConversationHandler
+    """
     user_id = update.effective_chat.id
 
-    # Проверяем доступ
     if not is_approved_user(user_id, APPROVED_USERS_FILE):
         await update.message.reply_text("У вас нет доступа. Сначала отправьте заявку командой /start.")
-        return
+        return ConversationHandler.END
 
-    # Получаем ссылку
-    # Можно сделать через /download <url> или просто брать из update.message.text
     if len(context.args) == 0:
         await update.message.reply_text("Пожалуйста, укажите ссылку. Пример: /download https://youtu.be/...")
-        return
+        return ConversationHandler.END
 
     url = context.args[0]
-    if "youtube.com" not in url and "youtu.be" not in url:
-        await update.message.reply_text("Это не похоже на ссылку YouTube. Попробуйте ещё раз.")
-        return
+    return await process_youtube_link(update, context, url)
 
-    await update.message.reply_text("Ссылка принята, начинаю загрузку...")
+
+async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Отображает меню пользователя.
+
+    :param update: Объект обновления
+    :param context: Контекст
+    :return: Состояние ConversationHandler
+    """
+    user_id = update.effective_chat.id
+
+    if is_approved_user(user_id, APPROVED_USERS_FILE):
+        buttons = [[InlineKeyboardButton(
+            "Скачать видео", callback_data="user:download")]]
+    else:
+        buttons = [[InlineKeyboardButton(
+            "Отправить заявку", callback_data="user:request_access")]]
+
+    keyboard = InlineKeyboardMarkup(buttons)
+    message = await update.message.reply_text("Что вы хотите сделать?", reply_markup=keyboard)
+    context.user_data['message_id'] = message.message_id
+    return ConversationHandler.END
+
+
+async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Обрабатывает callback-запросы пользователя.
+
+    :param update: Объект обновления
+    :param context: Контекст
+    :return: Состояние ConversationHandler
+    """
+    query = update.callback_query
+    data = query.data
+    user_id = query.from_user.id
+
+    if data == "user:request_access":
+        await query.message.edit_text("Заявка отправлена...")
+        return ConversationHandler.END
+    elif data == "user:download":
+        await query.message.edit_text(
+            "Пришлите ссылку на YouTube обычным сообщением.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Отмена", callback_data="user:cancel")
+            ]])
+        )
+        await query.answer()
+        return WAITING_FOR_LINK
+    elif data == "user:cancel":
+        # Return to main menu
+        if is_approved_user(user_id, APPROVED_USERS_FILE):
+            buttons = [[InlineKeyboardButton(
+                "Скачать видео", callback_data="user:download")]]
+        else:
+            buttons = [[InlineKeyboardButton(
+                "Отправить заявку", callback_data="user:request_access")]]
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await query.message.edit_text("Что вы хотите сделать?", reply_markup=keyboard)
+        await query.answer()
+        return ConversationHandler.END
+
+
+async def handle_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Обрабатывает ссылку на YouTube.
+
+    :param update: Объект обновления
+    :param context: Контекст
+    :return: Состояние ConversationHandler
+    """
+    url = update.message.text.strip()
+    # Delete user's message with link
+    await update.message.delete()
+    # Find and edit bot's message
+    try:
+        message = await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=context.user_data['message_id'],
+            text="Обрабатываю ссылку..."
+        )
+        return await process_youtube_link(update, context, url)
+    except:
+        # Fallback if message not found
+        message = await update.message.reply_text("Обрабатываю ссылку...")
+        context.user_data['message_id'] = message.message_id
+        return await process_youtube_link(update, context, url)
+
+
+async def process_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) -> int:
+    """
+    Обрабатывает ссылку на YouTube и запускает скрипт загрузки.
+
+    :param update: Объект обновления
+    :param context: Контекст
+    :param url: Ссылка на YouTube
+    :return: Состояние ConversationHandler
+    """
+    user_id = update.effective_chat.id
+
+    if "youtube.com" not in url and "youtu.be" not in url:
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=context.user_data['message_id'],
+            text="Это не похоже на ссылку YouTube. Попробуйте ещё раз.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Отмена", callback_data="user:cancel")
+            ]])
+        )
+        return WAITING_FOR_LINK
+
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=context.user_data['message_id'],
+        text=f"Ссылка принята, начинаю загрузку: {url}"
+    )
 
     try:
         subprocess.Popen([SCRIPT_PATH, url, str(user_id)])
     except Exception as e:
-        await update.message.reply_text(f"Ошибка при запуске скрипта: {e}")
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=context.user_data['message_id'],
+            text=f"Ошибка при запуске скрипта: {e}"
+        )
+
+    return ConversationHandler.END
 
 
+def get_conversation_handler() -> ConversationHandler:
+    """
+    Возвращает ConversationHandler для пользователя.
 
-async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Динамическое меню для пользователя."""
-    user_id = update.effective_chat.id
-
-    if is_approved_user(user_id, APPROVED_USERS_FILE):
-        # Только кнопка «Скачать видео»
-        buttons = [[InlineKeyboardButton("Скачать видео", callback_data="user:download")]]
-    else:
-        # Только кнопка «Отправить заявку»
-        buttons = [[InlineKeyboardButton("Отправить заявку", callback_data="user:request_access")]]
-
-    keyboard = InlineKeyboardMarkup(buttons)
-    await update.message.reply_text("Что вы хотите сделать?", reply_markup=keyboard)
-
-async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатий Inline-кнопок."""
-    query = update.callback_query
-    data = query.data  # "user:request_access" или "user:download"
-    user_id = query.from_user.id
-
-    if data == "user:request_access":
-        # Вызов вашей логики заявки или прямо здесь
-        await query.message.reply_text("Заявка отправлена...")
-        # Допустим, вы уже делали это в /start, поэтому просто дублирую пример
-        # Если нужно — добавьте или вызовите готовую функцию.
-    elif data == "user:download":
-        # Ставим флаг, что ждём ссылку
-        context.user_data["state"] = "waiting_for_link"
-        await query.message.reply_text("Пришлите ссылку на YouTube обычным сообщением.")
-
-    await query.answer()
-
-# Теперь отдельный MessageHandler, который отлавливает, когда пользователь в state="waiting_for_link".
-# Мы проверяем, действительно ли ссылка похожа на YouTube, и запускаем скачивание.
-async def handle_waiting_for_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_chat.id
-    url = update.message.text.strip()
-
-    # Проверяем состояние
-    if context.user_data.get("state") == "waiting_for_link":
-        # Сбрасываем state, чтобы пользователь мог прислать один раз
-        context.user_data["state"] = None
-
-        # Проверяем, похоже ли на YouTube
-        if "youtube.com" in url or "youtu.be" in url:
-            # Здесь можно вызвать вашу функцию скачивания
-            await update.message.reply_text(f"Ссылка «{url}» принята, начинаю загрузку...")
-            try:
-                from config import SCRIPT_PATH
-                subprocess.Popen([SCRIPT_PATH, url, str(user_id)])
-            except Exception as e:
-                await update.message.reply_text(f"Ошибка при запуске скрипта: {e}")
-        else:
-            await update.message.reply_text("Это не похоже на ссылку YouTube. Попробуйте ещё раз.")
-    else:
-        # Если пользователь не в режиме ожидания ссылки, игнорируем или отправляем подсказку
-        pass
+    :return: Объект ConversationHandler
+    """
+    return ConversationHandler(
+        entry_points=[
+            CommandHandler('start', start),
+            CommandHandler('menu', user_menu),
+            CommandHandler('download', download_video),
+            CallbackQueryHandler(user_callback_handler, pattern='^user:')
+        ],
+        states={
+            WAITING_FOR_LINK: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND,
+                               handle_youtube_link)
+            ]
+        },
+        fallbacks=[
+            CommandHandler('start', start),
+            CommandHandler('menu', user_menu),
+            CommandHandler('help', lambda u, c: ConversationHandler.END),
+            CallbackQueryHandler(user_callback_handler, pattern='^user:cancel')
+        ]
+    )

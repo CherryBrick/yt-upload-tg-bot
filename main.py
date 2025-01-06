@@ -1,6 +1,9 @@
 import logging
-from telegram.ext import (ApplicationBuilder,
-                          CommandHandler, MessageHandler, filters)
+from datetime import datetime as dt
+
+from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler,
+                          filters)
+
 from config import BOT_TOKEN
 from handlers import admin_handlers, default_handlers, user_handlers
 
@@ -15,6 +18,14 @@ def main() -> None:
     """
     Основная функция для запуска бота.
     """
+
+    """
+    Тест корректности смонитрованного тома
+    """
+
+    with open('../videos/volume_up', 'w') as f:
+        f.write(f'Volume is up at {dt.now()}')
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # ---------- Хендлеры универсальные ----------

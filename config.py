@@ -1,7 +1,5 @@
-import os
-from dotenv import load_dotenv
+import os 
 
-load_dotenv()  # загружаем переменные из .env
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))

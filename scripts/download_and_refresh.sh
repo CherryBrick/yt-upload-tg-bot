@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-source "$HOME/telegram/bin/activate"
-set -a
-source /path/to/.env
-set +a
-# Переменные
 
 CHAT_ID="$2"  # Передаётся из бота
 URL="$1"
@@ -35,8 +30,13 @@ curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
     -d text="Начинаю загрузку: $TITLE от $UPLOADER."
 
 # Загружаем видео
-yt-dlp -f "bestvideo+bestaudio/best" -o "$HOME$VIDEOS_DIR/%(title)s.%(ext)s" "$URL"
+yt-dlp -f "bestvideo+bestaudio/best" -o "/$VIDEOS_DIR/%(title)s.%(ext)s" "$URL"
 if [ $? -eq 0 ]; then
+    # Обновляем библиотеку Jellyfin
+    curl -X POST "$JELLYFIN_API_URL/Library/Refresh" \
+        -H "X-Emby-Token: $JELLYFIN_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{"id":"$JELLYFIN_API_MEDIA_ID"}'       
     # Уведомляем об успешной загрузке
     curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
         -d chat_id="$CHAT_ID" \
@@ -49,8 +49,4 @@ else
     exit 1
 fi
 
-# Обновляем библиотеку Jellyfin
-curl -X POST "$JELLYFIN_API_URL" \
-     -H "X-Emby-Token: $JELLYFIN_API_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"id":"$JELLYFIN_API_MEDIA_ID"}'
+

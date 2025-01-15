@@ -1,0 +1,50 @@
+name: Build and Deploy Telegram Bot
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: telegram_bot:latest
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Build Docker Image
+        run: |
+          docker build -t $IMAGE_NAME .
+          docker save $IMAGE_NAME | gzip > telegram_bot_image.tar.gz
+      - name: Upload Docker Image as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: telegram_bot_image
+          path: telegram_bot_image.tar.gz
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download Docker Image
+        uses: actions/download-artifact@v3
+        with:
+          name: telegram_bot_image
+          path: telegram_bot_image.tar.gz
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            gzip -d telegram_bot_image.tar.gz
+            docker load < telegram_bot_image.tar
+            docker-compose down
+            docker-compose up -d

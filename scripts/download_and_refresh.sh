@@ -33,11 +33,7 @@ curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
 yt-dlp -f "bestvideo+bestaudio/best" -o "/$VIDEOS_DIR/%(title)s.%(ext)s" "$URL"
 if [ $? -eq 0 ]; then
     # Обновляем библиотеку Jellyfin
-<<<<<<< HEAD
     curl -X POST "$JELLYFIN_API_URL/Library/Refresh:8096" \
-=======
-    curl -X POST "$JELLYFIN_API_URL/Library/Refresh" \
->>>>>>> dev
         -H "X-Emby-Token: $JELLYFIN_API_KEY" \
         -H "Content-Type: application/json" \
         -d '{"id":"$JELLYFIN_API_MEDIA_ID"}'       

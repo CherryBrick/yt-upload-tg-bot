@@ -37,6 +37,8 @@ jobs:
           name: telegram_bot_image
           path: ~/telegram_bot/
 
+      - name: Check repo
+        run: ls -aR
 
       - name: copy files to target server via scp
         uses: appleboy/scp-action@v0.1.3
@@ -58,5 +60,4 @@ jobs:
             gzip -d telegram_bot_image.tar.gz
             docker load < telegram_bot_image.tar
             cd ~/telegram_bot
-            docker-compose down
-            docker-compose up -d
+            ls -aR

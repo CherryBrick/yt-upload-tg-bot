@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - actions-debug
 
 env:
   IMAGE_NAME: telegram_bot:latest
@@ -18,10 +19,9 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t $IMAGE_NAME .
-          docker save $IMAGE_NAME | gzip > telegram_bot_image.tar.gz
+          echo "Hellow world" | gzip > telegram_bot_image.tar.gz
       - name: Upload Docker Image as Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: telegram_bot_image
           path: telegram_bot_image.tar.gz
@@ -32,11 +32,22 @@ jobs:
 
     steps:
       - name: Download Docker Image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: telegram_bot_image
-          path: telegram_bot_image.tar.gz
+          path: ~/telegram_bot/
 
+
+      - name: copy files to target server via scp
+        uses: appleboy/scp-action@v0.1.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "./docker-compose.yml"
+          target: "~/telegram_bot/"
+
+          
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -46,5 +57,6 @@ jobs:
           script: |
             gzip -d telegram_bot_image.tar.gz
             docker load < telegram_bot_image.tar
+            cd ~/telegram_bot
             docker-compose down
             docker-compose up -d

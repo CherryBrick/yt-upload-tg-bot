@@ -1,11 +1,15 @@
-import os 
+import os
 
+from services.db import DBConfig
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 JELLYFIN_API_KEY = os.getenv("JELLYFIN_API_KEY")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_PATH = os.path.join(BASE_DIR, "scripts", "download_and_refresh.sh")
-APPROVED_USERS_FILE = os.path.join(BASE_DIR, "db", "approved_users.json")
-PENDING_REQUESTS_FILE = os.path.join(BASE_DIR, "db", "pending_requests.json")
+USER_DB_CONFIG = DBConfig(
+    host=os.getenv("POSTGRES_HOST", ''),
+    port=os.getenv("POSTGRES_PORT", ''),
+    user=os.getenv("POSTGRES_USER", ''),
+    password=os.getenv("POSTGRES_PASSWORD", ''),
+    database=os.getenv("USER_DB_NAME", ''),
+)

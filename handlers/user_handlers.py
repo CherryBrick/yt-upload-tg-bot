@@ -1,13 +1,13 @@
 import logging
 import subprocess
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (ContextTypes, filters, ConversationHandler,
-                          CommandHandler, MessageHandler, CallbackQueryHandler)
-from config import APPROVED_USERS_FILE, PENDING_REQUESTS_FILE, SCRIPT_PATH
-from services.db import load_data, save_data
-from services.permissions import is_approved_user
 
-# Define conversation states
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (CallbackQueryHandler, CommandHandler, ContextTypes,
+                          ConversationHandler, MessageHandler, filters)
+
+from config import ADMIN_CHAT_ID, USER_DB_CONFIG
+from services.service_factory import ServiceFactory
+
 WAITING_FOR_LINK = 1
 
 logging.basicConfig(
@@ -26,40 +26,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     :param context: Контекст
     :return: Состояние ConversationHandler
     """
+    user_service = ServiceFactory.get_user_service(
+        USER_DB_CONFIG, ADMIN_CHAT_ID)
     user_id = update.effective_chat.id
-    pending_requests = load_data(PENDING_REQUESTS_FILE)
 
-    if is_approved_user(user_id, APPROVED_USERS_FILE):
+    if user_service.is_approved_user(user_id):
         await user_menu(update, context)
-    elif user_id in pending_requests:
-        await update.message.reply_text("Ваша заявка уже на рассмотрении у администратора.")
+    elif user_service.is_pending_user(user_id):
+        await update.message.reply_text("Ваша заявка на рассмотрении у администратора.")
     else:
-        pending_requests.append(user_id)
-        save_data(PENDING_REQUESTS_FILE, pending_requests)
+        user_service.add_user(user_id)
+        user_service.set_pending(user_id)
         await update.message.reply_text("Заявка на доступ отправлена администратору.")
     return ConversationHandler.END
-
-
-async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """
-    Обрабатывает команду /download.
-
-    :param update: Объект обновления
-    :param context: Контекст
-    :return: Состояние ConversationHandler
-    """
-    user_id = update.effective_chat.id
-
-    if not is_approved_user(user_id, APPROVED_USERS_FILE):
-        await update.message.reply_text("У вас нет доступа. Сначала отправьте заявку командой /start.")
-        return ConversationHandler.END
-
-    if len(context.args) == 0:
-        await update.message.reply_text("Пожалуйста, укажите ссылку. Пример: /download https://youtu.be/...")
-        return ConversationHandler.END
-
-    url = context.args[0]
-    return await process_youtube_link(update, context, url)
 
 
 async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -70,17 +49,20 @@ async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     :param context: Контекст
     :return: Состояние ConversationHandler
     """
+    user_service = ServiceFactory.get_user_service(
+        USER_DB_CONFIG, ADMIN_CHAT_ID)
     user_id = update.effective_chat.id
 
-    if is_approved_user(user_id, APPROVED_USERS_FILE):
-        buttons = [[InlineKeyboardButton(
-            "Скачать видео", callback_data="user:download")]]
-    else:
-        buttons = [[InlineKeyboardButton(
-            "Отправить заявку", callback_data="user:request_access")]]
+    buttons = [[InlineKeyboardButton(
+        "Скачать видео" if user_service.is_approved_user(user_id)
+        else "Отправить заявку",
+        callback_data="user:download" if user_service.is_approved_user(user_id)
+        else "user:request_access"
+    )]]
 
     keyboard = InlineKeyboardMarkup(buttons)
-    message = await update.message.reply_text("Что вы хотите сделать?", reply_markup=keyboard)
+    message = await update.message.reply_text("Что вы хотите сделать?",
+                                              reply_markup=keyboard)
     context.user_data['message_id'] = message.message_id
     return ConversationHandler.END
 
@@ -111,12 +93,8 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         return WAITING_FOR_LINK
     elif data == "user:cancel":
         # Return to main menu
-        if is_approved_user(user_id, APPROVED_USERS_FILE):
-            buttons = [[InlineKeyboardButton(
-                "Скачать видео", callback_data="user:download")]]
-        else:
-            buttons = [[InlineKeyboardButton(
-                "Отправить заявку", callback_data="user:request_access")]]
+        buttons = [[InlineKeyboardButton(
+            "Скачать видео", callback_data="user:download")]]
 
         keyboard = InlineKeyboardMarkup(buttons)
         await query.message.edit_text("Что вы хотите сделать?", reply_markup=keyboard)
@@ -133,9 +111,7 @@ async def handle_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE
     :return: Состояние ConversationHandler
     """
     url = update.message.text.strip()
-    # Delete user's message with link
     await update.message.delete()
-    # Find and edit bot's message
     try:
         message = await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
@@ -144,7 +120,6 @@ async def handle_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return await process_youtube_link(update, context, url)
     except:
-        # Fallback if message not found
         message = await update.message.reply_text("Обрабатываю ссылку...")
         context.user_data['message_id'] = message.message_id
         return await process_youtube_link(update, context, url)
@@ -179,7 +154,8 @@ async def process_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     try:
-        subprocess.Popen([SCRIPT_PATH, url, str(user_id)])
+        subprocess.Popen(
+            ['./scripts/download_and_refresh.sh', url, str(user_id)])
     except Exception as e:
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
@@ -199,8 +175,6 @@ def get_conversation_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CommandHandler('menu', user_menu),
-            CommandHandler('download', download_video),
             CallbackQueryHandler(user_callback_handler, pattern='^user:')
         ],
         states={

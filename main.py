@@ -4,8 +4,9 @@ from datetime import datetime as dt
 from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler,
                           filters)
 
-from config import BOT_TOKEN
+from config import ADMIN_CHAT_ID, BOT_TOKEN, USER_DB_CONFIG
 from handlers import admin_handlers, default_handlers, user_handlers
+from services.service_factory import ServiceFactory
 
 # Настраиваем логирование
 logging.basicConfig(
@@ -19,12 +20,8 @@ def main() -> None:
     Основная функция для запуска бота.
     """
 
-    """
-    Тест корректности смонитрованного тома
-    """
-
-    with open('../videos/volume_up', 'w') as f:
-        f.write(f'Volume is up at {dt.now()}')
+    # Инициализация сервисов
+    user_service = ServiceFactory.get_user_service(USER_DB_CONFIG, ADMIN_CHAT_ID)
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -48,5 +45,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # main()
     main()

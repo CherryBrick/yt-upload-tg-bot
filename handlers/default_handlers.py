@@ -1,10 +1,10 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from services.permissions import is_admin
+from config import ADMIN_CHAT_ID, USER_DB_CONFIG
+from services.service_factory import ServiceFactory
 
 
-# TODO: вынести общее меню с формированием кнопок в зависимости от уровня доступа
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Ответ на неизвестную команду.
@@ -34,15 +34,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     :param update: Объект обновления
     :param context: Контекст
     """
+    user_service = ServiceFactory.get_user_service(
+        USER_DB_CONFIG, ADMIN_CHAT_ID)
     user_id = update.effective_chat.id
-    text = "Доступные команды:\n"
 
-    # Общие
-    text += "/start — Проверить/получить доступ.\n"
-    # text += "/menu — Открыть интерактивное меню.\n"
+    text = "Доступные команды:\n/start — Проверить/получить доступ.\n"
 
-    # Если пользователь админ, добавим админские команды
-    if is_admin(user_id):
+    if user_service.is_admin(user_id):
         text += "\nАдминистраторские команды:\n"
         text += "/list_requests — Показать все заявки.\n"
         text += "/approve <user_id> — Подтвердить заявку.\n"

@@ -17,7 +17,23 @@ logging.basicConfig(
 
 def main() -> None:
     """
-    Основная функция для запуска бота.
+    Initializes and starts the Telegram bot application with user, admin, and default handlers.
+    
+    This function sets up the bot by:
+    - Creating a user service using configuration parameters
+    - Building the Telegram application with the bot token
+    - Adding conversation handlers for help, user interactions, and admin functions
+    - Configuring handlers for unknown commands and messages
+    - Starting the bot's polling mechanism to receive updates
+    
+    Parameters:
+        None
+    
+    Returns:
+        None
+    
+    Raises:
+        Exception: Potential exceptions during bot initialization or polling
     """
 
     # Инициализация сервисов

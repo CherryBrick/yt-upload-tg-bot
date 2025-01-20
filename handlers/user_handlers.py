@@ -20,11 +20,22 @@ logger = logging.getLogger()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Обрабатывает команду /start.
-
-    :param update: Объект обновления
-    :param context: Контекст
-    :return: Состояние ConversationHandler
+    Handles the /start command for user interaction with the Telegram bot.
+    
+    Manages user access by checking their approval status and performing appropriate actions:
+    - If the user is approved, displays the user menu
+    - If the user is already pending, informs them about the pending status
+    - If the user is new, adds them to the system and sets their status to pending
+    
+    Parameters:
+        update (Update): Telegram update object containing user and message information
+        context (ContextTypes.DEFAULT_TYPE): Telegram context for handling the update
+    
+    Returns:
+        int: Conversation state (ConversationHandler.END)
+    
+    Raises:
+        No explicit exceptions are raised within this method
     """
     user_service = ServiceFactory.get_user_service(
         USER_DB_CONFIG, ADMIN_CHAT_ID)
@@ -43,11 +54,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Отображает меню пользователя.
-
-    :param update: Объект обновления
-    :param context: Контекст
-    :return: Состояние ConversationHandler
+    Displays the user menu with dynamic options based on user approval status.
+    
+    Parameters:
+        update (Update): The incoming Telegram update object
+        context (ContextTypes.DEFAULT_TYPE): The context for handling the conversation
+    
+    Returns:
+        int: The conversation state (ConversationHandler.END)
+    
+    This function creates an inline keyboard with a button that changes dynamically:
+    - For approved users: "Скачать видео" (Download video) button
+    - For non-approved users: "Отправить заявку" (Send request) button
+    
+    The function uses the user service to determine the user's approval status and sets 
+    the appropriate callback data for the button. It also stores the message ID in the 
+    user's context data for potential future reference.
     """
     user_service = ServiceFactory.get_user_service(
         USER_DB_CONFIG, ADMIN_CHAT_ID)
@@ -69,11 +91,21 @@ async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Обрабатывает callback-запросы пользователя.
-
-    :param update: Объект обновления
-    :param context: Контекст
-    :return: Состояние ConversationHandler
+    Handles user callback queries for the Telegram bot.
+    
+    This function processes inline keyboard button interactions, managing different user actions such as requesting access, initiating video download, or canceling an operation.
+    
+    Parameters:
+        update (Update): The incoming update from Telegram containing the callback query
+        context (ContextTypes.DEFAULT_TYPE): The context for handling the update
+    
+    Returns:
+        int: The next conversation state for the ConversationHandler
+    
+    States:
+        - If "request_access": Sends a request access message and ends the conversation
+        - If "download": Prompts the user to send a YouTube link and moves to WAITING_FOR_LINK state
+        - If "cancel": Returns to the main menu and ends the conversation
     """
     query = update.callback_query
     data = query.data
@@ -104,11 +136,19 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def handle_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Обрабатывает ссылку на YouTube.
-
-    :param update: Объект обновления
-    :param context: Контекст
-    :return: Состояние ConversationHandler
+    Handles a YouTube link submitted by the user.
+    
+    Processes the provided YouTube URL by first deleting the original message and then updating or sending a processing message. Initiates the video download process by calling `process_youtube_link`.
+    
+    Args:
+        update (Update): The incoming Telegram update containing the user's message.
+        context (ContextTypes.DEFAULT_TYPE): The context for the current conversation.
+    
+    Returns:
+        int: The conversation state for the ConversationHandler.
+    
+    Raises:
+        Exception: If there are issues editing or sending the processing message.
     """
     url = update.message.text.strip()
     await update.message.delete()
@@ -127,12 +167,26 @@ async def handle_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def process_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) -> int:
     """
-    Обрабатывает ссылку на YouTube и запускает скрипт загрузки.
-
-    :param update: Объект обновления
-    :param context: Контекст
-    :param url: Ссылка на YouTube
-    :return: Состояние ConversationHandler
+    Process a YouTube video download link and initiate the download script.
+    
+    This function validates the provided URL, confirms it is a YouTube link, and triggers a download process for the specified video. It handles user interaction by updating messages and managing the conversation state.
+    
+    Args:
+        update (Update): The Telegram update object containing user interaction details.
+        context (ContextTypes.DEFAULT_TYPE): The context for the current bot interaction.
+        url (str): The YouTube video URL to be downloaded.
+    
+    Returns:
+        int: The next state of the ConversationHandler, either continuing to wait for a link or ending the conversation.
+    
+    Raises:
+        Exception: If there is an error launching the download script.
+    
+    Notes:
+        - Checks if the URL contains YouTube domain variations
+        - Provides user feedback during the download process
+        - Uses a subprocess to run an external download script
+        - Handles potential script execution errors
     """
     user_id = update.effective_chat.id
 
@@ -168,9 +222,15 @@ async def process_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYP
 
 def get_conversation_handler() -> ConversationHandler:
     """
-    Возвращает ConversationHandler для пользователя.
-
-    :return: Объект ConversationHandler
+    Returns a ConversationHandler for managing user interactions in the Telegram bot.
+    
+    This handler defines the conversation flow for user interactions, including:
+    - Entry points for starting the bot or handling user callbacks
+    - State management for waiting for a YouTube link
+    - Fallback commands for navigation and conversation termination
+    
+    Returns:
+        ConversationHandler: Configured conversation handler with defined states and transitions
     """
     return ConversationHandler(
         entry_points=[

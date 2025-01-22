@@ -33,7 +33,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_service = ServiceFactory.get_user_service(
         USER_DB_CONFIG, ADMIN_CHAT_ID)
 
-    if not user_service.is_admin(update.effective_chat.id):
+    if not user_service.is_admin(update.effective_user.id):
         await update.message.reply_text("Вы не авторизованы.")
         return ConversationHandler.END
 
@@ -72,7 +72,7 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         USER_DB_CONFIG, ADMIN_CHAT_ID)
     callback_query = update.callback_query
 
-    if not user_service.is_admin(update.effective_chat.id):
+    if not user_service.is_admin(update.effective_user.id):
         await update.message.reply_text("Вы не авторизованы.")
         return ConversationHandler.END
 
@@ -83,8 +83,10 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     if not pending_requests:
         text = "Нет ожидающих заявок."
-        await (callback_query.message.edit_text(text) if callback_query
-               else update.message.reply_text(text))
+        if callback_query:
+            await callback_query.message.edit_text(text, reply_markup=keyboard)
+        else:
+            await update.message.reply_text(text, reply_markup=keyboard)
         return ConversationHandler.END
 
     total_pages = (total_count + page_size - 1) // page_size
@@ -146,18 +148,30 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         - Sends callback query answers to the user
         - Refreshes the list of pending requests
     """
+    def parse_callback_data(data: str) -> tuple[str, int]:
+        """Safely parse callback data and validate user_id."""
+        try:
+            action, user_id_str = data.split(":", 2)[1:]
+            user_id = int(user_id_str)
+            if user_id <= 0:
+                raise ValueError("Invalid user_id")
+            return action, user_id
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Invalid callback data: {e}")
+
+
     user_service = ServiceFactory.get_user_service(
         USER_DB_CONFIG, ADMIN_CHAT_ID)
     query = update.callback_query
     data = query.data
 
     if data.startswith("admin:approve:"):
-        user_id = int(data.split(":")[2])
+        _, user_id = parse_callback_data(data)
         user_service.set_approved(user_id)
         await query.answer("Пользователь одобрен!")
 
     elif data.startswith("admin:reject:"):
-        user_id = int(data.split(":")[2])
+        _, user_id = parse_callback_data(data)
         user_service.remove_pending(user_id)
         await query.answer("Пользователь отклонён!")
 

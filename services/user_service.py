@@ -42,72 +42,48 @@ class UserService:
             - Drops and recreates the 'update_user_status' function to ensure latest implementation
             - Includes test cases for inserting and updating a test user record
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        user_id BIGINT PRIMARY KEY,
-                        approved BOOLEAN DEFAULT FALSE,
-                        pending BOOLEAN DEFAULT FALSE,
-                        row_added_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-                    CREATE TABLE IF NOT EXISTS users_hist (
-                        row_id BIGSERIAL PRIMARY KEY,
-                        user_id BIGINT NOT NULL,
-                        approved BOOLEAN,
-                        pending BOOLEAN,
-                        row_added_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-                        row_changed_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-                        FOREIGN KEY (user_id) REFERENCES users (user_id)
-                    );
-                   DROP FUNCTION IF EXISTS update_user_status(bigint, boolean, boolean);
-                   CREATE OR REPLACE FUNCTION update_user_status(
-                        new_user_id BIGINT,
-                        new_approved BOOLEAN,
-                        new_pending BOOLEAN
-                    ) RETURNS VOID AS $$
-                    DECLARE
-                        current_timestamp_val TIMESTAMP WITH TIME ZONE := CURRENT_TIMESTAMP;
-                    BEGIN
-                        -- Добавление строки в историческую таблицу
-                        INSERT INTO users_hist (user_id, approved, pending, row_added_timestamp, row_changed_timestamp)
-                        SELECT user_id, approved, pending, row_added_timestamp, current_timestamp_val
-                        FROM users
-                        WHERE user_id = new_user_id;
-                    
-                        -- Обновление статуса пользователя
-                        UPDATE users
-                        SET approved = new_approved,
-                            pending = new_pending,
-                            row_added_timestamp = current_timestamp_val
-                        WHERE user_id = new_user_id;
-                    END;
-                    $$ LANGUAGE plpgsql;
-                            
-                    -- Тест кейс
-                    INSERT INTO users (user_id) 
-                    VALUES (0) 
-                    ON CONFLICT (user_id) DO NOTHING;
-                            
-                    SELECT update_user_status(0, TRUE, TRUE);
-                            
-                    SELECT user_id, approved, pending, row_added_timestamp
+        with self.get_connection() as conn, conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    approved BOOLEAN DEFAULT FALSE,
+                    pending BOOLEAN DEFAULT FALSE,
+                    row_added_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS users_hist (
+                    row_id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    approved BOOLEAN,
+                    pending BOOLEAN,
+                    row_added_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+                    row_changed_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                );
+                DROP FUNCTION IF EXISTS update_user_status(bigint, boolean, boolean);
+                CREATE OR REPLACE FUNCTION update_user_status(
+                    new_user_id BIGINT,
+                    new_approved BOOLEAN,
+                    new_pending BOOLEAN
+                ) RETURNS VOID AS $$
+                DECLARE
+                    current_timestamp_val TIMESTAMP WITH TIME ZONE := CURRENT_TIMESTAMP;
+                BEGIN
+                    -- Добавление строки в историческую таблицу
+                    INSERT INTO users_hist (user_id, approved, pending, row_added_timestamp, row_changed_timestamp)
+                    SELECT user_id, approved, pending, row_added_timestamp, current_timestamp_val
                     FROM users
-                    WHERE user_id = 0;
-                            
-                    SELECT user_id, approved, pending, row_added_timestamp, row_changed_timestamp
-                    FROM users_hist
-                    WHERE user_id = 0;
-                    
-                    DELETE
-                    FROM users_hist
-                    WHERE user_id = 0;
-                            
-                    DELETE
-                    FROM users
-                    WHERE user_id = 0;
-                """)
-                conn.commit()
+                    WHERE user_id = new_user_id;
+                
+                    -- Обновление статуса пользователя
+                    UPDATE users
+                    SET approved = new_approved,
+                        pending = new_pending,
+                        row_added_timestamp = current_timestamp_val
+                    WHERE user_id = new_user_id;
+                END;
+                $$ LANGUAGE plpgsql;
+            """)
+            conn.commit()
 
     @contextmanager
     def get_connection(self):
@@ -162,14 +138,13 @@ class UserService:
         Raises:
             psycopg2.Error: If a database error occurs during the query execution.
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT approved FROM users WHERE user_id = %s",
-                    (user_id,)
-                )
-                result = cur.fetchone()
-                return result[0] if result else False
+        with self.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT approved FROM users WHERE user_id = %s",
+                (user_id,)
+            )
+            result = cur.fetchone()
+            return result[0] if result else False
 
     def is_pending_user(self, user_id: int) -> bool:
         """
@@ -184,14 +159,13 @@ class UserService:
         Raises:
             psycopg2.Error: If a database error occurs during the query.
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT pending FROM users WHERE user_id = %s",
-                    (user_id,)
-                )
-                result = cur.fetchone()
-                return result[0] if result else False
+        with self.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT pending FROM users WHERE user_id = %s",
+                (user_id,)
+            )
+            result = cur.fetchone()
+            return result[0] if result else False
 
     def add_user(self, user_id):
         """
@@ -211,21 +185,20 @@ class UserService:
             - Uses an upsert strategy with ON CONFLICT DO NOTHING
             - Logs any errors encountered during user insertion
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                try:
-                    cur.execute(
-                        """
-                        INSERT INTO users (user_id) 
-                        VALUES (%s) 
-                        ON CONFLICT (user_id) DO NOTHING;
-                        """,
-                        (user_id,)
-                    )
-                    conn.commit()
-                except Exception as e:
-                    self.logger.error(f"Failed to add user {user_id}: {e}")
-                    raise
+        with self.get_connection() as conn, conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO users (user_id) 
+                    VALUES (%s) 
+                    ON CONFLICT (user_id) DO NOTHING;
+                    """,
+                    (user_id,)
+                )
+                conn.commit()
+            except Exception as e:
+                self.logger.error(f"Failed to add user {user_id}: {e}")
+                raise
 
     def set_pending(self, user_id):
         """
@@ -246,20 +219,19 @@ class UserService:
             - Archives the previous user status in 'users_hist' table
             - Commits the database transaction if successful
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                try:
-                    cur.execute(
-                        """
-                        SELECT update_user_status(%s, %s, %s);
-                        """,
-                        (user_id, False, True)
-                    )
-                    conn.commit()
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to set user {user_id} as pending: {e}")
-                    raise
+        with self.get_connection() as conn, conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT update_user_status(%s, %s, %s);
+                    """,
+                    (user_id, False, True)
+                )
+                conn.commit()
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to set user {user_id} as pending: {e}")
+                raise
 
     def set_approved(self, user_id):
         """
@@ -280,19 +252,18 @@ class UserService:
             - Archives the previous user status in the 'users_hist' table
             - Commits the database transaction if successful
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                try:
-                    cur.execute(
-                        """
-                        SELECT update_user_status(%s, %s, %s);
-                        """,
-                        (user_id, True, False)
-                    )
-                    conn.commit()
-                except Exception as e:
-                    self.logger.error(f"Failed to approve user {user_id}: {e}")
-                    raise
+        with self.get_connection() as conn, conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT update_user_status(%s, %s, %s);
+                    """,
+                    (user_id, True, False)
+                )
+                conn.commit()
+            except Exception as e:
+                self.logger.error(f"Failed to approve user {user_id}: {e}")
+                raise
 
     def remove_pending(self, user_id):
         """
@@ -313,20 +284,19 @@ class UserService:
             - Archives the previous user status in the 'users_hist' table
             - Logs an error message if the status update fails
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                try:
-                    cur.execute(
-                        """
-                        SELECT update_user_status(%s, %s, %s);
-                        """,
-                        (user_id, False, False)
-                    )
-                    conn.commit()
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to remove pending status for user {user_id}: {e}")
-                    raise
+        with self.get_connection() as conn, conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT update_user_status(%s, %s, %s);
+                    """,
+                    (user_id, False, False)
+                )
+                conn.commit()
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to remove pending status for user {user_id}: {e}")
+                raise
 
     def get_pending_users(self, page: int, page_size: int):
         """
@@ -352,28 +322,27 @@ class UserService:
             # Retrieve first page with 10 users per page
             pending_users, total = user_service.get_pending_users(1, 10)
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                offset = (page - 1) * page_size
-                cur.execute(
-                    """
-                    SELECT user_id 
-                    FROM users 
-                    WHERE pending = TRUE 
-                    ORDER BY row_added_timestamp 
-                    LIMIT %s OFFSET %s
-                    """,
-                    (page_size, offset)
-                )
-                pending_users = [row[0] for row in cur.fetchall()]
+        with self.get_connection() as conn, conn.cursor() as cur:
+            offset = (page - 1) * page_size
+            cur.execute(
+                """
+                SELECT user_id 
+                FROM users 
+                WHERE pending = TRUE 
+                ORDER BY row_added_timestamp 
+                LIMIT %s OFFSET %s
+                """,
+                (page_size, offset)
+            )
+            pending_users = [row[0] for row in cur.fetchall()]
 
-                cur.execute(
-                    """
-                    SELECT COUNT(*) 
-                    FROM users 
-                    WHERE pending = TRUE
-                    """
-                )
-                total_count = cur.fetchone()[0]
+            cur.execute(
+                """
+                SELECT COUNT(*) 
+                FROM users 
+                WHERE pending = TRUE
+                """
+            )
+            total_count = cur.fetchone()[0]
 
-                return pending_users, total_count
+            return pending_users, total_count

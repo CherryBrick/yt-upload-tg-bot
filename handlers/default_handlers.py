@@ -5,6 +5,17 @@ from config import ADMIN_CHAT_ID, USER_DB_CONFIG
 from services.service_factory import ServiceFactory
 
 
+COMMON_COMMANDS = """
+Доступные команды:
+/start — Отобразить главное меню.
+"""
+ADMIN_COMMANDS = """
+Администраторские команды:
+/list_requests — Показать все заявки.
+/approve <user_id> — Подтвердить заявку.
+/reject <user_id> — Отклонить заявку.
+"""
+
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle an unrecognized command sent to the Telegram bot.
@@ -54,12 +65,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         USER_DB_CONFIG, ADMIN_CHAT_ID)
     user_id = update.effective_chat.id
 
-    text = "Доступные команды:\n/start — Проверить/получить доступ.\n"
+    text = COMMON_COMMANDS
 
     if user_service.is_admin(user_id):
-        text += "\nАдминистраторские команды:\n"
-        text += "/list_requests — Показать все заявки.\n"
-        text += "/approve <user_id> — Подтвердить заявку.\n"
-        text += "/reject <user_id> — Отклонить заявку.\n"
+        text += "\n" + ADMIN_COMMANDS
 
     await update.message.reply_text(text)

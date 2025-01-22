@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 # Установка рабочих зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    jq ffmpeg curl \
+    build-essential jq ffmpeg curl libpq-dev gcc\
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Установим рабочую директорию

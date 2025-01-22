@@ -1,4 +1,5 @@
 import logging
+import shlex
 import subprocess
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -75,11 +76,10 @@ async def user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         USER_DB_CONFIG, ADMIN_CHAT_ID)
     user_id = update.effective_chat.id
 
+    is_approved = user_service.is_approved_user(user_id)
     buttons = [[InlineKeyboardButton(
-        "Скачать видео" if user_service.is_approved_user(user_id)
-        else "Отправить заявку",
-        callback_data="user:download" if user_service.is_approved_user(user_id)
-        else "user:request_access"
+        "Скачать видео" if is_approved else "Отправить заявку",
+        callback_data="user:download" if is_approved else "user:request_access"
     )]]
 
     keyboard = InlineKeyboardMarkup(buttons)
@@ -208,8 +208,9 @@ async def process_youtube_link(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     try:
+        safe_url = shlex.quote(url)
         subprocess.Popen(
-            ['./scripts/download_and_refresh.sh', url, str(user_id)])
+            ['./scripts/download_and_refresh.sh', safe_url, str(user_id)])
     except Exception as e:
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,

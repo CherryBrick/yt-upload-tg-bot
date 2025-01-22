@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  postgres:
+   image: postgres:15-alpine
+   ports:
+     - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+   environment:
+     POSTGRES_USER: "${POSTGRES_USER}"
+     POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}" 
+     POSTGRES_DB: "${USER_DB_NAME}"
+   volumes:
+     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+     - postgres_data:/var/lib/postgresql/data
+   healthcheck:
+     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${USER_DB_NAME}"]
+     interval: 10s
+     timeout: 5s
+     retries: 5
+   logging:
+     driver: "json-file"
+     options:
+       max-size: "10m"
+       max-file: "3"
+
   telegram_bot:
     build: .
     image: telegram_bot:latest
@@ -15,10 +37,26 @@ services:
       JELLYFIN_API_URL: "${JELLYFIN_API_URL}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       JELLYFIN_API_MEDIA_ID: "${JELLYFIN_API_MEDIA_ID}"
+      POSTGRES_HOST: "${POSTGRES_HOST}"
+      POSTGRES_PORT: "${POSTGRES_PORT}"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      USER_DB_NAME: "${USER_DB_NAME}"
     volumes:
       - ${HOME}/videos:/videos
+    depends_on:
+     postgres:
+       condition: service_healthy
+    healthcheck:
+     test: ["CMD-SHELL", "pgrep -f 'python.*main.py' || exit 1"]
+     interval: 30s
+     timeout: 10s
+     retries: 3
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+ postgres_data:

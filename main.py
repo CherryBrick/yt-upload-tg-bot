@@ -4,8 +4,9 @@ from datetime import datetime as dt
 from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler,
                           filters)
 
-from config import BOT_TOKEN
+from config import ADMIN_CHAT_ID, BOT_TOKEN, USER_DB_CONFIG
 from handlers import admin_handlers, default_handlers, user_handlers
+from services.service_factory import ServiceFactory
 
 # Настраиваем логирование
 logging.basicConfig(
@@ -16,15 +17,27 @@ logging.basicConfig(
 
 def main() -> None:
     """
-    Основная функция для запуска бота.
+    Initializes and starts the Telegram bot application with user, admin, and default handlers.
+    
+    This function sets up the bot by:
+    - Creating a user service using configuration parameters
+    - Building the Telegram application with the bot token
+    - Adding conversation handlers for help, user interactions, and admin functions
+    - Configuring handlers for unknown commands and messages
+    - Starting the bot's polling mechanism to receive updates
+    
+    Parameters:
+        None
+    
+    Returns:
+        None
+    
+    Raises:
+        Exception: Potential exceptions during bot initialization or polling
     """
 
-    """
-    Тест корректности смонитрованного тома
-    """
-
-    with open('../videos/volume_up', 'w') as f:
-        f.write(f'Volume is up at {dt.now()}')
+    # Инициализация сервисов
+    user_service = ServiceFactory.get_user_service(USER_DB_CONFIG, ADMIN_CHAT_ID)
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -48,5 +61,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # main()
     main()

@@ -86,7 +86,7 @@ jobs:
               set -e
               cd ~/telegram_bot
               docker-compose -f docker-compose.yml config > docker-compose.$(date +%Y%m%d_%H%M%S).yml
-              gzip -d telegram_bot_image.tar.gz
+              gzip -df telegram_bot_image.tar.gz
               docker load < telegram_bot_image.tar
               docker-compose down
               if [ $? -ne 0 ]; then
